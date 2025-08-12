@@ -22,32 +22,36 @@ export default function Home() {
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const scrollAreaRef = useRef<HTMLDivElement>(null)
 
-  // Predefined bot responses for now
-  const getBotResponse = (userMessage: string): string => {
-    const responses = [
-      "That's an interesting question! Let me think about that.",
-      "I understand what you're asking. Here's my perspective on that topic.",
-      "Thanks for sharing that with me. I'd be happy to help you explore this further.",
-      "That's a great point. From what I know about this subject...",
-      "I appreciate you bringing this up. Let me provide some insights on that.",
-    ]
-    return responses[Math.floor(Math.random() * responses.length)]
-  }
+   // Call the API to get bot response
+  const getBotResponse = async (messages: Message[]): Promise<string> => {
+    // Convert our messages to the format expected by the API
+    const apiMessages = messages.map(msg => ({
+      role: msg.sender === 'user' ? 'user' as const : 'assistant' as const,
+      content: msg.content
+    }))
 
-  // Simulate API call delay and potential errors
-  const simulateBotResponse = async (userMessage: string): Promise<string> => {
-    // Simulate network delay
-    await new Promise(resolve => setTimeout(resolve, 1000 + Math.random() * 2000))
-    
-    // Simulate occasional errors (10% chance)
-    if (Math.random() < 0.1) {
-      throw new Error('Failed to get response from bot')
+    const response = await fetch('/api', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        messages: apiMessages
+      })
+    })
+
+    if (!response.ok) {
+      const errorData = await response.json()
+      throw new Error(errorData.error || 'Failed to get response from API')
     }
-    
-    return getBotResponse(userMessage)
+
+    const data = await response.json()
+    return data.message
   }
 
-  const handleSendMessage = async () => {
+  // Didnt know that the entire chat history is being sent to the api as context. I thought there was a way of just sending the latest message
+  // and the model will still remember the context of the conversation
+   const handleSendMessage = async () => {
     if (!inputValue.trim() || isLoading) return
 
     const userMessage: Message = {
@@ -63,7 +67,9 @@ export default function Home() {
     setIsLoading(true)
 
     try {
-      const botResponseContent = await simulateBotResponse(userMessage.content)
+      // Get all messages including the new user message for context
+      const allMessages = [...messages, userMessage]
+      const botResponseContent = await getBotResponse(allMessages)
       
       const botMessage: Message = {
         id: (Date.now() + 1).toString(),
@@ -81,7 +87,7 @@ export default function Home() {
         timestamp: new Date(),
         error: true
       }
-
+      console.error('Error fetching bot response:', error)
       setMessages(prev => [...prev, errorMessage])
     } finally {
       setIsLoading(false)
@@ -117,6 +123,7 @@ export default function Home() {
         </div>
 
         {/* Chat Messages */}
+        {/* Flex-1 tells the scroll area to take up the remaining space. Since the header and input areas are fixed, it is able to do so*/}
         <div className="flex-1 overflow-hidden">
           <ScrollArea ref={scrollAreaRef} className="h-full p-4">
             <div className="space-y-4">
